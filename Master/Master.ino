@@ -1,0 +1,241 @@
+
+
+/***************************************************
+  This is an example sketch for the Adafruit 2.2" SPI display.
+  This library works with the Adafruit 2.2" TFT Breakout w/SD card
+  ----> http://www.adafruit.com/products/1480
+adafruit_gfx 1.5.3 version is very important
+ 
+  Check out the links above for our tutorials and wiring diagrams
+  These displays use SPI to communicate, 4 or 5 pins are required to
+  interface (RST is optional)
+  Adafruit invests time and resources providing this open source code,
+  please support Adafruit and open-source hardware by purchasing
+  products from Adafruit!
+
+  Written by Limor Fried/Ladyada for Adafruit Industries.
+  MIT license, all text above must be included in any redistribution
+ ****************************************************/
+#include <SoftReset.h> 
+#include "SPI.h"
+#include "Adafruit_GFX.h"
+#include "Adafruit_ILI9340.h"
+#include<Keypad.h>
+#include <avr/wdt.h>
+#include <Wire.h>
+#include <Servo.h>
+
+Servo myservo;
+
+#define Slave 1
+
+const byte ROWS = 4;
+const byte COLS = 4;
+int num[6] = {0};
+int a = 0;
+int n = 0;
+int ang = 0;
+
+char keys[ROWS][COLS] = {
+  {'1', '2', '3', 'A'},
+  {'4', '5', '6', 'B'},
+  {'7', '8', '9', 'C'},
+  {'*', '0', '#', 'D'},
+};
+
+byte rowPins[ROWS] = {9,8,7,6};
+byte colPins[COLS] = {5,4,3,2};
+
+Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+
+#if defined(__SAM3X8E__)
+    #undef __FlashStringHelper::F(string_literal)
+    #define F(string_literal) string_literal
+#endif
+
+// These are the pins used for the UNO
+// for Due/Mega/Leonardo use the hardware SPI pins (which are different)
+#define _sclk 13
+#define _miso 12
+#define _mosi 11
+#define _cs 10
+#define _dc A1
+#define _rst A0
+
+// Using software SPI is really not suggested, its incredibly slow
+//Adafruit_ILI9340 tft = Adafruit_ILI9340(_cs, _dc, _mosi, _sclk, _rst, _miso);
+// Use hardware SPI
+Adafruit_ILI9340 tft = Adafruit_ILI9340(_cs, _dc, _rst);
+
+void setup() {
+
+  tft.begin();
+  testText();
+  Wire.begin();
+  myservo.attach(A2);
+  int angle = 90;
+  myservo.write(angle);
+  Serial.begin(9600);
+}
+
+int convert_num(char key) //문자열을 숫자형으로 바꿔주는 함수
+{
+    int num;
+    if(key == '1')
+      num = 1;
+    else if(key == '2')
+      num = 2; 
+    else if(key == '3')
+      num = 3;
+    else if(key == '4')
+      num = 4;
+    else if(key == '5')
+      num = 5;
+    else if(key == '6')
+      num = 6;
+    else if(key == '7')
+      num = 7;
+    else if(key == '8')
+      num = 8;
+    else if(key == '9')
+      num = 9;  
+    else if(key == '0')
+      num = 0;
+    return num;
+}
+
+void loop(void) {
+  
+   int keypad_num = 1;
+
+   char key = keypad.getKey();
+   if(key)
+   {
+    keypad_num = convert_num(key);
+    num[n] = keypad_num;
+    change_number(keypad_num, n++);
+    //key = 0;
+   for(int j=0; j<=5; j++)
+   {
+     Serial.println(num[j]);
+   }
+   } 
+   if(key == '#' || key == 'D')
+   {
+     char re = key;
+     if(re == 'D')
+      {
+        soft_restart();
+      }
+
+     else if(re == '#')
+      {
+        if(num[0] != 1 || num[1] != 0 || num[2] > 2 || num[2] == 0 || num[3] > 4 || num[3] == 0 || num[4] > 0 || num[5] > 2 || num[5] == 0) //잘못된 범위의 숫자가 입력되었을 때, 보드를 초기화시켜준다.
+        {
+            tft.fillScreen(ILI9340_BLACK);
+            tft.setCursor(50,110);
+            tft.setTextColor(ILI9340_YELLOW); tft.setTextSize(4);
+            tft.println("ERROR");
+            delay(1500);
+            soft_restart();
+        }
+        else
+        {
+            tft.fillScreen(ILI9340_YELLOW);
+            tft.setCursor(50,110);
+            tft.setTextColor(ILI9340_BLUE); tft.setTextSize(4);
+            tft.println("THANK YOU");
+            if(num[5]>0)
+            {
+              if(num[2] == 1)
+              {
+                for(ang = 90; ang < 150; ang +=3)
+                myservo.write(ang); //101동일 경우, 101동으로 연결되는 컨베이어에 물건이 안착되도록 서보모터의 방향을 돌려준다.
+                delay(500);
+              }
+              else if(num[2] == 2)
+              {
+                for(ang = 90; ang > 30; ang -=3)
+                myservo.write(ang); //102동일 경우, 102동으로 연결되는 컨베이어에 물건이 안착되도록 서보모터의 방향을 돌려준다.
+                delay(500);
+              }
+              Wire.beginTransmission(Slave); //Slave_1으로 입력한 6개의 숫자를 전달한다.
+              for(int i = 0; i <=5 ; i++)
+              {
+                Wire.write(num[i]);
+              }
+              Wire.endTransmission();
+             }
+        }
+      
+      }
+   }
+
+}
+
+
+unsigned long testFillScreen() {
+  unsigned long start = micros();
+  tft.fillScreen(ILI9340_BLACK);
+  tft.fillScreen(ILI9340_RED);
+  tft.fillScreen(ILI9340_GREEN);
+  tft.fillScreen(ILI9340_BLUE);
+  tft.fillScreen(ILI9340_BLACK);
+  return micros() - start;
+}
+
+
+
+void change_number(int keypad_num, int n)
+{
+  if(n <= 2)
+  {
+        tft.setCursor(40+30*n, 120);
+        tft.setTextColor(ILI9340_RED); tft.setTextSize(3);
+        tft.print(keypad_num);
+  }
+  else if(n <= 5)
+  {
+        tft.setCursor(40+30*(n+1), 120);
+        tft.setTextColor(ILI9340_BLUE); tft.setTextSize(3);
+        tft.print(keypad_num);
+  }
+}
+
+ void index(int a1, int a2, int a3)
+ {
+   int final_value = (a1*100 + a2*10 + a3*1);
+   Serial.write(final_value);
+   Serial.println(final_value);
+ }
+
+ void testText() {
+
+  
+  tft.setRotation(3);
+  tft.fillScreen(ILI9340_BLACK);
+  //unsigned long start = micros();
+  tft.setCursor(20,50);
+  tft.setTextColor(ILI9340_WHITE);  tft.setTextSize(2);
+  tft.println("Please Enter The Address");
+  for(int c = 0; c <= 6 ; c++)
+  {
+      
+      if(c == 3)
+      {
+          tft.setCursor(40+30*c,125);
+          tft.setTextColor(ILI9340_YELLOW); tft.setTextSize(3);
+          tft.print("-"); 
+      }
+      else
+      {
+          tft.setCursor(40+30*c,125);
+          tft.setTextColor(ILI9340_YELLOW); tft.setTextSize(3);
+          tft.print("_"); 
+      }
+  }
+ 
+  
+ 
+}
